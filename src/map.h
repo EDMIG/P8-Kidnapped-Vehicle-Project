@@ -8,9 +8,11 @@
 #ifndef MAP_H_
 #define MAP_H_
 
+#include <vector>
+
 class Map {
 public:
-	
+
 	struct single_landmark_s{
 
 		int id_i ; // Landmark ID
