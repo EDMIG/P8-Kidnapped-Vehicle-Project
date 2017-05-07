@@ -12,6 +12,7 @@
 #include <math.h>
 
 #include "particle_filter.h"
+#include "helper_functions.h"
 
 using namespace std;
 
@@ -21,9 +22,8 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
-	num_particles = 100;
+	num_particles = 50;
 
-	weights.resize(num_particles, 1);
 	particles.resize(num_particles);
 
 	default_random_engine gen;
@@ -31,17 +31,20 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	normal_distribution<double> N_y_init(y, std[1]);
 	normal_distribution<double> N_theta_init(theta, std[2]);
 
+	std::cout << N_x_init(gen) << " " << N_y_init(gen) << " " << N_theta_init(gen) << '\n';
+
 	for (unsigned int i = 0; i < num_particles; i++) {
-		particles[i].id = i;
+		particles[i].id = i + 1;
 		particles[i].x = N_x_init(gen);
 		particles[i].y = N_y_init(gen);
 		particles[i].theta = N_theta_init(gen);
-		particles[i].weight = weights[i];
+		particles[i].weight = 1.0;
 	}
+
+	is_initialized = true;
 
 	std::cout << "Num Particles " << num_particles << '\n';
 	std::cout << "Initialized." << '\n';
-	is_initialized = true;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
@@ -86,9 +89,34 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   for the fact that the map's y-axis actually points downwards.)
 	//   http://planning.cs.uiuc.edu/node99.html
 
-	for (unsigned int i = 0; i < num_particles; i++) {
-		for (unsigned int i = 0; i < observations.size(); i++) {
-			XXXX;
+	for (unsigned int i = 0; i < num_particles; i++) { // iterate through each particle
+		// iterate through each CAR sensor observation in Vehicle Coordinate system
+
+		for (unsigned int z = 0; z < observations.size(); z++) {
+			double obs_to_map_x = observations[z].x * cos(particles[i].theta) - observations[z].y * sin(particles[i].theta) + particles[i].x;
+			double obs_to_map_y = observations[z].x * sin(particles[i].theta) + observations[z].y * cos(particles[i].theta) + particles[i].y;
+
+			double max_dist = sensor_range;
+			double closest_mark_x;
+			double closest_mark_y;
+
+			for (unsigned int k = 0; k < map_landmarks.landmark_list.size(); k++) {
+				double l_dist = dist(obs_to_map_x, obs_to_map_y,
+									 map_landmarks.landmark_list[k].x_f, map_landmarks.landmark_list[k].y_f);
+
+				if (l_dist < max_dist){
+					closest_mark_x = map_landmarks.landmark_list[k].x_f;
+					closest_mark_y = map_landmarks.landmark_list[k].y_f;
+					max_dist = l_dist;
+				}
+			}
+
+			// Multivariate Gaussian
+			double prob = (1 / (2 * M_PI * std_landmark[0] * std_landmark[1]) *
+            			   exp( - (pow((obs_to_map_x - closest_mark_x), 2) / (2.0 * pow(std_landmark[0], 2)) +
+						   		   pow((obs_to_map_y - closest_mark_y), 2) / (2.0 * pow(std_landmark[1], 2)))));
+
+			particles[i].weight *= prob;
 		}
 	}
 }
@@ -97,6 +125,30 @@ void ParticleFilter::resample() {
 	// TODO: Resample particles with replacement with probability proportional to their weight.
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+
+	vector<Particle> resampled_particles;
+
+	// put all particles.weight into the weights vector
+	for (size_t i = 0; i < num_particles; i++)
+	{
+		weights.push_back(particles[i].weight);
+	}
+	default_random_engine gen;
+	// distribute the weights randomly from weights.begin to
+	// weights. end using discrete_distribution function
+	discrete_distribution<int> weight_distribution(weights.begin(), weights.end());
+
+	for (int i = 0; i < num_particles; i++) {
+		int weighted_index = weight_distribution(gen);
+		// what is range of weighted_index
+		resampled_particles.push_back(particles[weighted_index]);
+	}
+
+	particles = resampled_particles;
+	weights.clear();
+	for (int i = 0; i < num_particles; i++) {
+		particles[i].weight = 1.;
+	}
 
 }
 

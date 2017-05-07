@@ -124,6 +124,8 @@ int main() {
 				best_particle = particles[i];
 			}
 		}
+
+		// std::cout << gt[i].x << " " << gt[i].y << " " << best_particle.x << " " << best_particle.y << '\n';
 		double *avg_error = getError(gt[i].x, gt[i].y, gt[i].theta, best_particle.x, best_particle.y, best_particle.theta);
 
 		for (int j = 0; j < 3; ++j) {
