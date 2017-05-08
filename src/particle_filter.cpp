@@ -58,20 +58,18 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	normal_distribution<double> N_y_init(0, std_pos[1]);
 	normal_distribution<double> N_theta_init(0, std_pos[2]);
 
-	for (unsigned int i = 0; i < num_particles; i++) {
-		particles[i].x = N_x_init(gen) + particles[i].x + velocity / yaw_rate * (sin(particles[i].theta + yaw_rate * delta_t) - sin(particles[i].theta));
-		particles[i].y = N_y_init(gen) + particles[i].y + velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate * delta_t));
-		particles[i].theta = N_theta_init(gen) + particles[i].theta + yaw_rate * delta_t;
+	if (fabs(yaw_rate) > 0.00001) { // avoid deviding by zero
+		for (unsigned int i = 0; i < num_particles; i++) {
+			particles[i].x = N_x_init(gen) + particles[i].x + velocity / yaw_rate * (sin(particles[i].theta + yaw_rate * delta_t) - sin(particles[i].theta));
+			particles[i].y = N_y_init(gen) + particles[i].y + velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate * delta_t));
+			particles[i].theta = N_theta_init(gen) + particles[i].theta + yaw_rate * delta_t;
+		}
+	} else {
+		for (unsigned int i = 0; i < num_particles; i++) {
+			particles[i].x = N_x_init(gen) + particles[i].x + velocity * delta_t * cos(particles[i].theta);
+			particles[i].y = N_y_init(gen) + particles[i].y + velocity * delta_t * sin(particles[i].theta);
+		}
 	}
-
-}
-
-void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
-	// TODO: Find the predicted measurement that is closest to each observed measurement and assign the
-	//   observed measurement to this particular landmark.
-	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to
-	//   implement this method and use it as a helper during the updateWeights phase.
-
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
@@ -88,6 +86,10 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   3.33. Note that you'll need to switch the minus sign in that equation to a plus to account
 	//   for the fact that the map's y-axis actually points downwards.)
 	//   http://planning.cs.uiuc.edu/node99.html
+
+	double C = 1 / (2 * M_PI * std_landmark[0] * std_landmark[1]);
+	double stdx_2 = 2.0 * pow(std_landmark[0], 2);
+	double stdy_2 = 2.0 * pow(std_landmark[1], 2);
 
 	for (unsigned int i = 0; i < num_particles; i++) { // iterate through each particle
 		// iterate through each CAR sensor observation in Vehicle Coordinate system
@@ -111,10 +113,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 				}
 			}
 
-			// Multivariate Gaussian
-			double prob = (1 / (2 * M_PI * std_landmark[0] * std_landmark[1]) *
-            			   exp( - (pow((obs_to_map_x - closest_mark_x), 2) / (2.0 * pow(std_landmark[0], 2)) +
-						   		   pow((obs_to_map_y - closest_mark_y), 2) / (2.0 * pow(std_landmark[1], 2)))));
+			// Multivariate Gaussians
+			double prob = C * exp( - (pow(obs_to_map_x - closest_mark_x, 2) / stdx_2 + pow(obs_to_map_y - closest_mark_y, 2) / stdy_2));
 
 			particles[i].weight *= prob;
 		}
@@ -134,8 +134,15 @@ void ParticleFilter::resample() {
 		weights.push_back(particles[i].weight);
 	}
 	default_random_engine gen;
+
 	// distribute the weights randomly from weights.begin to
 	// weights. end using discrete_distribution function
+
+	// std::discrete_distribution produces random integers on the interval [0, n),
+	// where the probability of each individual integer i is defined as w
+	// i/S, that is the weight of the ith integer divided by the sum of all n weights.
+	// std::discrete_distribution satisfies all requirements of RandomNumberDistribution
+
 	discrete_distribution<int> weight_distribution(weights.begin(), weights.end());
 
 	for (int i = 0; i < num_particles; i++) {
